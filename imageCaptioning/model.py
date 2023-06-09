@@ -1,25 +1,35 @@
 import torch
-import toch.nn as nn
+import torch.nn as nn
 import torchvision.models as models
+import numpy as np
 
 
 class EncoderCNN(nn.Module):
     def __init__(self, embed_size, train_CNN=False):
         super(EncoderCNN, self).__init__()
         self.train_CNN = train_CNN
+        #self.inception = models.inception_v3(weights=['Inception_V3_Weights'])
         self.inception = models.inception_v3(pretrained=True, aux_logits=False)
         self.inception.fc = nn.Linear(
             self.inception.fc.in_features, embed_size)
         self.relu = nn.ReLU()
-        self.dropout = nn.dropout(0.5)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, images):
         features = self.inception(images)
+        # features = torch.Tensor(arr.values)
+        # print("arr: ", type(arr))
+        # #print('features: ', features)
+        #print("type: ", type(features))
         for name, param in self.inception.named_parameters():
             if "fc.weight" in name or "fc.bias" in name:
-                param.requares_grad = True
+                param.requires_grad = True
             else:
                 param.requires_grad = self.train_CNN
+        # if type(features) != "torch.Tensor":
+
+            #arr = np.array(features)
+            #features = torch.Tensor(features.values)
         return self.dropout(self.relu(features))
 
 
@@ -50,3 +60,18 @@ class CNNtoRNN(nn.Module):
         features = self.encoderCNN(images)
         outputs = self.decoderRNN(features, captions)
         return outputs
+
+    def caption_image(self, image, vocabulary, max_length=50):
+        result_caption = []
+        with torch.no_grad():
+            x = self.encoderCNN(image).unsqueeze(0)
+            states = None
+            for _ in range(max_length):
+                hiddens, states = self.decoderRNN.lstm(x, states)
+                output = self.decoderRNN.linear(hiddens.squeeze(0))
+                predicted = output.argmax(1)
+                result_caption.append(predicted.item())
+                x = self.decoderRNN.embed(predicted).unsqueeze(0)
+                if vocabulary.itos[predicted.item()] == "<EOS>":
+                    break
+        return [vocabulary.itos[idx] for idx in result_caption]
